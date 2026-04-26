@@ -34,7 +34,7 @@ if any(path.exists() for path in secrets_paths):
     except Exception:
         api_url_secret = None
 
-API_URL = (api_url_secret or os.getenv("API_URL") or "http://127.0.0.1:8000").rstrip("/")
+API_URL = (api_url_secret or os.getenv("API_URL") or "").rstrip("/")
 
 # ── Custom CSS ─────────────────────────────────────────────────
 st.markdown("""
@@ -201,6 +201,8 @@ st.markdown("""
 
 # ── Helper functions ───────────────────────────────────────────
 def check_api_health():
+    if not API_URL:
+        return False
     try:
         r = requests.get(f"{API_URL}/health", timeout=3)
         return r.status_code == 200 and r.json().get("model_loaded", False)
@@ -271,6 +273,8 @@ def local_score_applicant(payload: dict):
 
 
 def score_applicant(payload: dict):
+    if not API_URL:
+        return local_score_applicant(payload), None
     try:
         r = requests.post(f"{API_URL}/score", json=payload, timeout=10)
         if r.status_code == 200:
@@ -502,7 +506,10 @@ api_ok = check_api_health()
 if api_ok:
     st.success("✅ API connected and model loaded", icon="✅")
 else:
-    st.warning("⚠️ API not available. Running with built-in fallback scoring. For production scores, set API_URL to your deployed backend.")
+    if API_URL:
+        st.warning("⚠️ Backend is unreachable. Using built-in fallback scoring for now.")
+    else:
+        st.success("✅ Running in standalone mode with built-in scoring.")
 
 st.divider()
 
