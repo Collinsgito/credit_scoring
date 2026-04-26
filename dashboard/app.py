@@ -208,6 +208,68 @@ def check_api_health():
         return False
 
 
+def local_score_applicant(payload: dict):
+    # Lightweight fallback model for hosted UI-only deployments.
+    risk = 0.0
+    risk += 0.28 * min(1.0, payload["revolving_utilization"] / 1.0)
+    risk += 0.22 * min(1.0, payload["debt_ratio"] / 1.0)
+    risk += 0.20 * min(1.0, (850 - payload["fico_score"]) / 550)
+    risk += 0.16 * min(1.0, (payload["num_30_59_days_late"] + payload["num_60_89_days_late"] + payload["num_90_days_late"]) / 12)
+    risk += 0.08 * min(1.0, payload["num_dependents"] / 6)
+    risk += 0.06 * min(1.0, max(0.0, (3500 - payload["monthly_income"]) / 3500))
+
+    prob = max(0.01, min(0.99, risk))
+    risk_score = int(round((1.0 - prob) * 1000))
+
+    if prob < 0.05:
+        tier = "Low Risk"
+        decision = "Approve"
+    elif prob < 0.12:
+        tier = "Medium Risk"
+        decision = "Approve with Conditions"
+    elif prob < 0.25:
+        tier = "High Risk"
+        decision = "Review"
+    else:
+        tier = "Very High Risk"
+        decision = "Decline"
+
+    fico = payload["fico_score"]
+    if fico < 580:
+        fico_band, fico_label = "Poor", "300-579"
+    elif fico < 670:
+        fico_band, fico_label = "Fair", "580-669"
+    elif fico < 740:
+        fico_band, fico_label = "Good", "670-739"
+    elif fico < 800:
+        fico_band, fico_label = "Very Good", "740-799"
+    else:
+        fico_band, fico_label = "Exceptional", "800-850"
+
+    risk_factors = [
+        {"feature": "Revolving Credit Utilization", "value": float(payload["revolving_utilization"]), "shap_value": round(0.45 * payload["revolving_utilization"], 3), "direction": "increases_risk"},
+        {"feature": "Debt Ratio", "value": float(payload["debt_ratio"]), "shap_value": round(0.35 * payload["debt_ratio"], 3), "direction": "increases_risk"},
+        {"feature": "Late Payments", "value": float(payload["num_30_59_days_late"] + payload["num_60_89_days_late"] + payload["num_90_days_late"]), "shap_value": round(0.05 * (payload["num_30_59_days_late"] + payload["num_60_89_days_late"] + payload["num_90_days_late"]), 3), "direction": "increases_risk"},
+    ]
+    protective_factors = [
+        {"feature": "FICO Score", "value": float(payload["fico_score"]), "shap_value": round(-0.20 * ((payload["fico_score"] - 300) / 550), 3), "direction": "decreases_risk"},
+        {"feature": "Monthly Income", "value": float(payload["monthly_income"]), "shap_value": round(-0.08 * min(1.0, payload["monthly_income"] / 8000), 3), "direction": "decreases_risk"},
+    ]
+
+    return {
+        "probability_of_default": prob,
+        "risk_score": risk_score,
+        "risk_tier": tier,
+        "risk_tier_color": "#1A7A4A" if tier == "Low Risk" else "#C9A84C" if tier == "Medium Risk" else "#D05538" if tier == "High Risk" else "#8B1A1A",
+        "decision": decision,
+        "fico_band": fico_band,
+        "fico_label": fico_label,
+        "top_risk_factors": risk_factors,
+        "top_protective_factors": protective_factors,
+        "model_version": "fallback-1.0",
+    }
+
+
 def score_applicant(payload: dict):
     try:
         r = requests.post(f"{API_URL}/score", json=payload, timeout=10)
@@ -215,9 +277,9 @@ def score_applicant(payload: dict):
             return r.json(), None
         return None, r.json().get("detail", "API error")
     except requests.ConnectionError:
-        return None, "Cannot connect to API. Is the server running? (uvicorn api.main:app --reload)"
+        return local_score_applicant(payload), "Using built-in fallback scoring because API is unavailable."
     except Exception as e:
-        return None, str(e)
+        return local_score_applicant(payload), f"Using built-in fallback scoring due to API error: {e}"
 
 
 def gauge_chart(score: int, prob: float):
@@ -440,7 +502,7 @@ api_ok = check_api_health()
 if api_ok:
     st.success("✅ API connected and model loaded", icon="✅")
 else:
-    st.error("⚠️ API not available. Start it: `uvicorn api.main:app --reload --port 8000`")
+    st.warning("⚠️ API not available. Running with built-in fallback scoring. For production scores, set API_URL to your deployed backend.")
 
 st.divider()
 
@@ -464,7 +526,7 @@ if score_btn:
         result, error = score_applicant(payload)
 
     if error:
-        st.error(f"Error: {error}")
+        st.info(error)
     elif result:
         # ── Row 1: Key metrics ─────────────────────────────
         col1, col2, col3, col4 = st.columns(4)
