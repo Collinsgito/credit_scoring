@@ -10,10 +10,15 @@ Run: streamlit run dashboard/app.py
 import streamlit as st
 import requests
 import plotly.graph_objects as go
+import os
 from math import sqrt
 
 # ── Config ─────────────────────────────────────────────────────
-API_URL = "http://127.0.0.1:8000"
+API_URL = (
+    st.secrets.get("API_URL")
+    or os.getenv("API_URL")
+    or "http://127.0.0.1:8000"
+).rstrip("/")
 
 st.set_page_config(
     page_title="Credit Risk Scorer",

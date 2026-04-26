@@ -34,7 +34,8 @@ credit-risk-api/
 │   └── app.py               # Streamlit frontend
 ├── train_model.py           # Full training pipeline
 ├── Dockerfile
-└── requirements.txt
+├── requirements.txt         # Streamlit Cloud runtime dependencies
+└── requirements-full.txt    # Full local ML/API dependencies
 ```
 
 ---
@@ -48,7 +49,7 @@ git clone https://github.com/YOUR_USERNAME/credit-risk-api.git
 cd credit-risk-api
 python -m venv env
 source env/bin/activate        # Windows: env\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-full.txt
 ```
 
 ### 2. Generate Data & Train Model
@@ -77,6 +78,9 @@ Visit **http://127.0.0.1:8000/docs** for interactive Swagger UI.
 ```bash
 streamlit run dashboard/app.py
 ```
+
+For hosted Streamlit deployments, set `API_URL` in Streamlit Secrets (or env vars)
+to your deployed FastAPI endpoint.
 
 Visit **http://localhost:8501**
 
