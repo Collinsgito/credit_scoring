@@ -11,21 +11,30 @@ import streamlit as st
 import requests
 import plotly.graph_objects as go
 import os
+from pathlib import Path
 from math import sqrt
 
 # ── Config ─────────────────────────────────────────────────────
-API_URL = (
-    st.secrets.get("API_URL")
-    or os.getenv("API_URL")
-    or "http://127.0.0.1:8000"
-).rstrip("/")
-
 st.set_page_config(
     page_title="Credit Risk Scorer",
     page_icon="💳",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+api_url_secret = None
+secrets_paths = [
+    Path.home() / ".streamlit" / "secrets.toml",
+    Path.cwd() / ".streamlit" / "secrets.toml",
+]
+
+if any(path.exists() for path in secrets_paths):
+    try:
+        api_url_secret = st.secrets.get("API_URL")
+    except Exception:
+        api_url_secret = None
+
+API_URL = (api_url_secret or os.getenv("API_URL") or "http://127.0.0.1:8000").rstrip("/")
 
 # ── Custom CSS ─────────────────────────────────────────────────
 st.markdown("""
